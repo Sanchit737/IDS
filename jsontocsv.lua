@@ -247,11 +247,12 @@ local function process_log_line(line)
         local sensor = log_entry.sensor or ""
         local dst_port = log_entry.dst_port or ""
         local password = log_entry.password or ""
+        local current_time = iso8601_to_unix(timestamp) or os.time()
 
         -- Append to CSV file
         local csv_f = io.open(output_csv, "a")
         if csv_f then
-            csv_f:write(table.concat({timestamp, src_ip, eventid, username, sensor, dst_port, password}, ",") .. "\n")
+            csv_f:write(table.concat({current_time, src_ip, eventid, username, sensor, dst_port, password}, ",") .. "\n")
             csv_f:close()
         else
             print("Error: Unable to open CSV file: " .. output_csv)
@@ -260,16 +261,15 @@ local function process_log_line(line)
         -- Append to log file
         local log_f = io.open(log_output_file, "a")
         if log_f then
-            log_f:write(string.format("{%s, %s, %s, %s, %s, %s, %s}\n", timestamp, src_ip, eventid, username, sensor, dst_port, password))
+            log_f:write(string.format("{%s, %s, %s, %s, %s, %s, %s}\n", current_time, src_ip, eventid, username, sensor, dst_port, password))
             log_f:close()
         else
             print("Error: Unable to open log file: " .. log_output_file)
         end
 
-        print("🟢 New Log Processed: {" .. table.concat({timestamp, src_ip, eventid, username, sensor, dst_port, password}, ", ") .. "}")
+        print("🟢 New Log Processed: {" .. table.concat({current_time, src_ip, eventid, username, sensor, dst_port, password}, ", ") .. "}")
 
         -- Track login attempts per IP and port
-        local current_time = iso8601_to_unix(timestamp) or os.time()
         local key = src_ip .. ":" .. dst_port
 
         if not login_attempts[key] then
