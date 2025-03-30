@@ -473,9 +473,61 @@ end
 -----------------
 local function cleanup()
     log_message("info", "Shutting down...")
-    if conn then conn:close() end
-    if env then env:close() end
+
+    -- Close database connections
+    if conn and conn:ping() then
+        conn:close()
+    end
+    if env then
+        env:close()
+    end
+    
+    -- Remove temporary files
+    os.remove("/tmp/honeypot_cleanup.flag")
+    
+    log_message("info", "Cleanup completed")
     os.exit(0)
+end
+
+-- POSIX-compliant signal handling (preferred)
+pcall(function()
+    local posix = require("posix")
+    local signal = require("posix.signal")
+    
+    signal.signal(signal.SIGINT, function()
+        log_message("warning", "Received SIGINT")
+        cleanup()
+    end)
+    
+    signal.signal(signal.SIGTERM, function()
+        log_message("warning", "Received SIGTERM")
+        cleanup()
+    end)
+    
+    log_message("debug", "POSIX signal handlers registered")
+end)
+
+-- Fallback file-based signal handling
+if not package.loaded["posix"] then
+    local co_signal = coroutine.create(function()
+        local signal_file = "/tmp/honeypot_cleanup.flag"
+        os.execute("touch " .. signal_file)
+        
+        while true do
+            local f = io.open(signal_file, "r")
+            if f then
+                local stat = f:seek("end")
+                if stat > 0 then
+                    f:close()
+                    cleanup()
+                end
+                f:close()
+            end
+            os.execute("sleep 1")
+            coroutine.yield()
+        end
+    end)
+    coroutine.resume(co_signal)
 end
 
 -- Register signal handlers
