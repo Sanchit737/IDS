@@ -180,9 +180,6 @@
 --     os.execute("sleep 0.5")  -- Optional short delay between iterations
 -- end
 
-
-
-
 local json = require("dkjson")
 local luasql = require("luasql.mysql")
 local env = assert(luasql.mysql(), "Error: Failed to initialize LuaSQL MySQL")
@@ -199,13 +196,12 @@ local conn = assert(env:connect(db_name, db_user, db_pass, db_host, db_port),
                     "Error: Failed to connect to MySQL database")
 
 -- Ensure the database table exists for blocked attempts
-conn:execute([[CREATE TABLE IF NOT EXISTS blocked_attempts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    src_ip VARCHAR(50),
-    dst_port INT,
-    attempts INT,
-    last_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);]])
+-- conn:execute([[CREATE TABLE IF NOT EXISTS blocked_attempts (
+--     id INT AUTO_INCREMENT PRIMARY KEY,
+--     src_ip VARCHAR(50),
+--     dst_port INT,
+--     attempts INT
+-- );]])
 
 -- File paths
 local honeypot_log_file = "/home/cowrie/cowrie/var/log/cowrie/cowrie.json"
@@ -214,6 +210,31 @@ local log_output_file = "/home/user/honeypot/processed_logs.log"
 
 -- Track login attempts per IP within 10 minutes
 local login_attempts = {}
+
+local function iso8601_to_unix(ts)
+    if ts == "" then return nil end
+    
+    -- Extract date-time components (ignoring microseconds/timezone)
+    local year, month, day, hour, min, sec = ts:match(
+        "^(%d%d%d%d)-(%d%d)-(%d%d)T(%d%d):(%d%d):(%d%d)"
+    )
+    if not year then return nil end
+    
+    -- Create time table (assumes UTC timezone)
+    local time_table = {
+        year = tonumber(year),
+        month = tonumber(month),
+        day = tonumber(day),
+        hour = tonumber(hour),
+        min = tonumber(min),
+        sec = tonumber(sec),
+        isdst = false
+    }
+    
+    -- Convert to Unix timestamp with timezone adjustment
+    local success, unix_time = pcall(os.time, time_table)
+    return success and unix_time or nil
+end
 
 -- Function to process and append a single log line
 local function process_log_line(line)
@@ -226,7 +247,6 @@ local function process_log_line(line)
         local sensor = log_entry.sensor or ""
         local dst_port = log_entry.dst_port or ""
         local password = log_entry.password or ""
-        
 
         -- Append to CSV file
         local csv_f = io.open(output_csv, "a")
@@ -249,7 +269,7 @@ local function process_log_line(line)
         print("🟢 New Log Processed: {" .. table.concat({timestamp, src_ip, eventid, username, sensor, dst_port, password}, ", ") .. "}")
 
         -- Track login attempts per IP and port
-        local current_time = os.time()
+        local current_time = iso8601_to_unix(timestamp) or os.time()
         local key = src_ip .. ":" .. dst_port
 
         if not login_attempts[key] then
@@ -268,7 +288,7 @@ local function process_log_line(line)
             print("🚨 Alert: Multiple failed login attempts detected from " .. src_ip .. " on port " .. dst_port)
 
             -- Insert into the database if not already present
-            local query = string.format("INSERT INTO blocked_attempts (src_ip, dst_port, attempts) VALUES ('%s', %d, %d)", 
+            local query = string.format("INSERT INTO self_set (source_ip, destination_port, attempts) VALUES ('%s', %d, %d)", 
                                         src_ip, tonumber(dst_port) or 0, login_attempts[key].count)
             local res, err = conn:execute(query)
             if not res then
