@@ -489,26 +489,22 @@ local function cleanup()
     os.exit(0)
 end
 
--- POSIX-compliant signal handling (preferred)
-pcall(function()
-    local posix = require("posix")
-    local signal = require("posix.signal")
-    
+-- POSIX-compliant signal handling
+local has_posix, posix = pcall(require, "posix")
+local has_signal, signal = pcall(require, "posix.signal")
+
+if has_posix and has_signal then
     signal.signal(signal.SIGINT, function()
-        log_message("warning", "Received SIGINT")
+        log_message("warning", "Received SIGINT - initiating shutdown")
         cleanup()
     end)
     
     signal.signal(signal.SIGTERM, function()
-        log_message("warning", "Received SIGTERM")
+        log_message("warning", "Received SIGTERM - initiating shutdown")
         cleanup()
     end)
-    
-    log_message("debug", "POSIX signal handlers registered")
-end)
-
--- Fallback file-based signal handling
-if not package.loaded["posix"] then
+else
+    log_message("warning", "POSIX module not found - using file-based signal handling")
     local co_signal = coroutine.create(function()
         local signal_file = "/tmp/honeypot_cleanup.flag"
         os.execute("touch " .. signal_file)
@@ -516,23 +512,17 @@ if not package.loaded["posix"] then
         while true do
             local f = io.open(signal_file, "r")
             if f then
-                local stat = f:seek("end")
-                if stat > 0 then
-                    f:close()
+                local modified = f:seek("end") > 0
+                f:close()
+                if modified then
                     cleanup()
                 end
-                f:close()
             end
             os.execute("sleep 1")
             coroutine.yield()
         end
     end)
     coroutine.resume(co_signal)
-end
-
--- Register signal handlers
-for _, sig in ipairs({"SIGINT", "SIGTERM"}) do
-    os.execute(string.format("trap 'kill -%d %d' %s", 15, os.getpid(), sig))
 end
 
 -- Start monitoring
