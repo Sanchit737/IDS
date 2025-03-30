@@ -77,7 +77,44 @@ local honeypot_log_file = "/home/cowrie/cowrie/var/log/cowrie/cowrie.json"
 local output_csv = "/home/user/honeypot/honeypot_logs.csv"
 local log_output_file = "/home/user/honeypot/processed_logs.log"
 
--- Function to fetch new logs from honeypot JSON file in real-time
+-- Function to process and append a single log line
+local function process_log_line(line)
+    local log_entry, _, err = json.decode(line)
+    if log_entry then
+        local log_data = {
+            log_entry.timestamp or "",
+            log_entry.src_ip or "",
+            log_entry.eventid or "",
+            log_entry.username or "",
+            log_entry.sensor or "",
+            log_entry.dest_port or "",
+            log_entry.password or ""
+        }
+        -- Append to CSV file
+        local csv_f = io.open(output_csv, "a")
+        if csv_f then
+            csv_f:write(table.concat(log_data, ",") .. "\n")
+            csv_f:close()
+        else
+            print("Error: Unable to open CSV file: " .. output_csv)
+        end
+
+        -- Append to log file
+        local log_f = io.open(log_output_file, "a")
+        if log_f then
+            log_f:write("{" .. table.concat(log_data, ", ") .. "}\n")
+            log_f:close()
+        else
+            print("Error: Unable to open log file: " .. log_output_file)
+        end
+
+        print("🟢 New Log Processed: {" .. table.concat(log_data, ", ") .. "}")
+    else
+        print("Warning: Skipping unparseable line: " .. (err or "Unknown error"))
+    end
+end
+
+-- Coroutine to monitor the honeypot JSON log file in real-time
 function monitor_honeypot_logs()
     local f = io.open(honeypot_log_file, "r")
     if not f then
@@ -85,60 +122,33 @@ function monitor_honeypot_logs()
         return
     end
 
-    -- Seek to the end of the file to only process new logs
+    -- Move to the end of the file so only new lines are processed
     f:seek("end")
+    print("🔄 Started monitoring JSON logs...")
 
     while true do
-        local line = f:read("*l")  -- Read new line
+        local line = f:read("*l")
         if line then
-            local log_entry, _, err = json.decode(line)
-            if log_entry then
-                local log_data = {
-                    log_entry.timestamp or "",
-                    log_entry.src_ip or "",
-                    log_entry.eventid or "",
-                    log_entry.username or "",
-                    log_entry.sensor or "",
-                    log_entry.dest_port or "",
-                    log_entry.password or ""
-                }
-
-                -- Append to CSV
-                local csv_f = io.open(output_csv, "a")
-                if csv_f then
-                    csv_f:write(table.concat(log_data, ",") .. "\n")
-                    csv_f:close()
-                end
-
-                -- Append to log file
-                local log_f = io.open(log_output_file, "a")
-                if log_f then
-                    log_f:write("{" .. table.concat(log_data, ", ") .. "}\n")
-                    log_f:close()
-                end
-
-                print("🟢 New Log Processed: {" .. table.concat(log_data, ", ") .. "}")
-            else
-                print("Warning: Skipping unparseable line: " .. (err or "Unknown error"))
-            end
+            process_log_line(line)
         else
             os.execute("sleep 1")  -- Wait for new entries
         end
+        coroutine.yield()
     end
+    f:close()
 end
 
--- Function to monitor changes in CSV file and print updates
+-- Coroutine to monitor changes in the CSV file and print new updates
 function monitor_csv_file()
     local last_size = 0
-
+    print("🔄 Started monitoring CSV file updates...")
     while true do
         local f = io.open(output_csv, "r")
         if f then
-            f:seek("end")  -- Move to the end of the file
+            f:seek("end")
             local size = f:seek()  -- Get current file size
-
             if size > last_size then
-                f:seek("set", last_size)  -- Read only new changes
+                f:seek("set", last_size)  -- Move to where we left off
                 for line in f:lines() do
                     print("🔵 CSV Updated: " .. line)
                 end
@@ -147,14 +157,22 @@ function monitor_csv_file()
             f:close()
         end
         os.execute("sleep 1")  -- Wait before checking again
+        coroutine.yield()
     end
 end
 
--- Run both functions in parallel
-local pid = os.fork()
-if pid == 0 then
-    monitor_csv_file()  -- Child process watches CSV
-else
-    monitor_honeypot_logs()  -- Parent process watches JSON logs
+-- Create coroutines for both tasks
+local co_json = coroutine.create(monitor_honeypot_logs)
+local co_csv = coroutine.create(monitor_csv_file)
+
+-- Main loop: resume both coroutines in a round-robin fashion
+while true do
+    local ok1, err1 = coroutine.resume(co_json)
+    if not ok1 then print("Error in JSON monitor:", err1) end
+
+    local ok2, err2 = coroutine.resume(co_csv)
+    if not ok2 then print("Error in CSV monitor:", err2) end
+
+    os.execute("sleep 0.5")  -- Optional short delay between iterations
 end
 
