@@ -53,6 +53,7 @@ function monitor_honeypot_logs(json_filename, output_csv, log_output_file)
         local line = f:read("*l")  -- Read new line
         if line then
             process_log_line(line, output_csv, log_output_file)
+            print("CSV file :", output_csv)
         else
             os.execute("sleep 2")  -- Wait before checking again
         end
@@ -68,3 +69,4 @@ local log_output_file = "/home/user/honeypot/processed_logs.log"
 
 -- Start monitoring logs
 monitor_honeypot_logs(honeypot_log_file, output_csv, log_output_file)
+
