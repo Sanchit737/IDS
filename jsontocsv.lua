@@ -286,19 +286,44 @@ local function process_log_line(line)
         -- If more than 3 attempts in 10 minutes, classify as an attack
         if login_attempts[key].count >= 4 then
             print("🚨 Alert: Multiple failed login attempts detected from " .. src_ip .. " on port " .. dst_port)
-
-            -- Insert into the database if not already present
-            local query = string.format("INSERT INTO self_set (source_ip, destination_port) VALUES ('%s', %d)", 
-                                        src_ip, tonumber(dst_port) or 0)
-            local res, err = conn:execute(query)
-            if not res then
-                print("Error inserting blocked attempt:", err)
+            
+            -- Block IP using iptables
+            local block_cmd = string.format("iptables -A INPUT -s %s -j DROP", src_ip)
+            local block_status = os.execute(block_cmd)
+            
+            if block_status then
+                print("🔒 IP " .. src_ip .. " blocked via iptables")
             else
-                print("✅ Blocked attempt stored in database!")
+                print("❌ Failed to block IP " .. src_ip)
             end
+            
+            -- Insert into the database if not already present
+            local check_query = string.format("SELECT * FROM self_set WHERE source_ip = '%s' AND destination_port = %d",
+            src_ip, tonumber(dst_port) or 0)
+
+            local cursor, err = conn:execute(check_query)
+
+            local cursor, err = conn:execute(check_query)
+            
+            if not cursor then
+                print("Error checking existing entry:", err)
+            else
+                local row = cursor:fetch({}, "a")
+                if not row then
+                    local query = string.format("INSERT INTO self_set (source_ip, destination_port) VALUES ('%s', %d)", src_ip, tonumber(dst_port) or 0)
+                    local res, err = conn:execute(query)
+                    if not res then
+                        print("Error inserting blocked attempt:", err)
+                    else
+                        print("✅ Blocked attempt stored in database!")
+                    end
+                else
+                    print("ℹ️ Entry already exists in database")
+                end
+            end
+        else
+            print("Warning: Skipping unparseable line: " .. (err or "Unknown error"))
         end
-    else
-        print("Warning: Skipping unparseable line: " .. (err or "Unknown error"))
     end
 end
 
