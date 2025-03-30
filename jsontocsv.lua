@@ -189,7 +189,7 @@ local env = assert(luasql.mysql(), "Error: Failed to initialize LuaSQL MySQL")
 
 -- Database credentials
 local db_host = os.getenv("DB_HOST")
-local db_user = os.getenv("DB_user")
+local db_user = os.getenv("DB_USER")
 local db_pass = os.getenv("DB_PASS")
 local db_name = os.getenv("DB_NAME")
 local db_port = os.getenv("DB_PORT")
@@ -199,13 +199,13 @@ local conn = assert(env:connect(db_name, db_user, db_pass, db_host, db_port),
                     "Error: Failed to connect to MySQL database")
 
 -- Ensure the database table exists for blocked attempts
--- conn:execute([[CREATE TABLE IF NOT EXISTS blocked_attempts (
---     id INT AUTO_INCREMENT PRIMARY KEY,
---     src_ip VARCHAR(50),
---     dst_port INT,
---     attempts INT,
---     last_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
--- );]])
+conn:execute([[CREATE TABLE IF NOT EXISTS blocked_attempts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    src_ip VARCHAR(50),
+    dst_port INT,
+    attempts INT,
+    last_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);]])
 
 -- File paths
 local honeypot_log_file = "/home/cowrie/cowrie/var/log/cowrie/cowrie.json"
@@ -214,36 +214,6 @@ local log_output_file = "/home/user/honeypot/processed_logs.log"
 
 -- Track login attempts per IP within 10 minutes
 local login_attempts = {}
-
-local function parse_timestamp(timestamp)
-    -- Extract year, month, day, hour, min, sec from the timestamp (assuming format: "YYYY-MM-DD HH:MM:SS")
-    local year_str, month_str, day_str, hour_str, min_str, sec_str = timestamp:match("(%d+)-(%d+)-(%d+) (%d+):(%d+):(%d+)")
-    
-    if year_str and month_str and day_str and hour_str and min_str and sec_str then
-        -- Convert all string values to numbers
-        local year = tonumber(year_str)
-        local month = tonumber(month_str)
-        local day = tonumber(day_str)
-        local hour = tonumber(hour_str)
-        local min = tonumber(min_str)
-        local sec = tonumber(sec_str)
-        
-        -- Verify all conversions were successful
-        if year and month and day and hour and min and sec then
-            return os.time({
-                year = year,
-                month = month,
-                day = day,
-                hour = hour,
-                min = min,
-                sec = sec
-            })
-        end
-    end
-    
-    print("⚠️ Warning: Failed to parse timestamp: " .. timestamp)
-    return nil
-end
 
 -- Function to process and append a single log line
 local function process_log_line(line)
@@ -257,12 +227,6 @@ local function process_log_line(line)
         local dst_port = log_entry.dst_port or ""
         local password = log_entry.password or ""
         
-        -- Convert timestamp to UNIX time
-        local current_time = parse_timestamp(timestamp)
-        if not current_time then
-            print("⏳ Skipping log due to invalid timestamp.")
-            return
-        end
 
         -- Append to CSV file
         local csv_f = io.open(output_csv, "a")
@@ -284,7 +248,8 @@ local function process_log_line(line)
 
         print("🟢 New Log Processed: {" .. table.concat({timestamp, src_ip, eventid, username, sensor, dst_port, password}, ", ") .. "}")
 
-        -- Track login attempts per IP and port using the parsed timestamp
+        -- Track login attempts per IP and port
+        local current_time = os.time()
         local key = src_ip .. ":" .. dst_port
 
         if not login_attempts[key] then
@@ -303,8 +268,8 @@ local function process_log_line(line)
             print("🚨 Alert: Multiple failed login attempts detected from " .. src_ip .. " on port " .. dst_port)
 
             -- Insert into the database if not already present
-            local query = string.format("INSERT INTO self_set (source_ip, destination_port) VALUES ('%s', %d)", 
-                                        src_ip, tonumber(dst_port) or 0)
+            local query = string.format("INSERT INTO blocked_attempts (src_ip, dst_port, attempts) VALUES ('%s', %d, %d)", 
+                                        src_ip, tonumber(dst_port) or 0, login_attempts[key].count)
             local res, err = conn:execute(query)
             if not res then
                 print("Error inserting blocked attempt:", err)
