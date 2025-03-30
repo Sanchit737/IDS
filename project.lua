@@ -85,7 +85,7 @@ end
 
 -- Main processing:
 -- Define the Honeyport log file path (adjust as needed)
-local honeyport_log_file = "/var/log/honeyport.log"
+local honeyport_log_file = "/home/cowrie/cowrie/var/log/cowrie/"
 
 -- Fetch logs from the Honeyport log file
 local honeyport_logs = fetch_honeyport_logs(honeyport_log_file)
