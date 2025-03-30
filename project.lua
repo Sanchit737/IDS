@@ -2,7 +2,7 @@
 local luasql = require("luasql.mysql")
 local env = assert(luasql.mysql(), "Error: Failed to initialize LuaSQL MySQL")
 
--- Connect to MySQL database
+-- Retrieve database credentials from environment variables
 local db_host = os.getenv("DB_HOST")
 local db_user = os.getenv("DB_user")
 local db_pass = os.getenv("DB_PASS")
@@ -13,8 +13,8 @@ local db_port = os.getenv("DB_PORT")
 local conn = assert(env:connect(db_name, db_user, db_pass, db_host, db_port),
                     "Error: Failed to connect to MySQL database")
 
--- Ensure the database tables exist
-conn:execute([[CREATE TABLE IF NOT EXISTS honeyport_logs (
+-- Ensure the database table exists
+conn:execute([[CREATE TABLE IF NOT EXISTS honeypot_logs (
     timestamp_col DATETIME,
     host VARCHAR(50),
     process VARCHAR(50),
@@ -26,21 +26,12 @@ conn:execute([[CREATE TABLE IF NOT EXISTS honeyport_logs (
     status VARCHAR(50)
 );]])
 
---[[ 
-Assume the Honeyport log file (e.g., /var/log/honeyport.log) contains CSV records 
-with the following fields in order:
-timestamp, host, process, pid, event, username, ip_address, port, status
-
-Example line:
-2025-03-30 14:22:05,controller,ssh,2345,login_attempt,unknown,192.168.1.100,22,failed
---]]
-
--- Function to fetch logs from Honeyport log file
-function fetch_honeyport_logs(filename)
+-- Function to fetch logs from honeypot log file
+function fetch_honeypot_logs(filename)
     local logs = {}
     local f = io.open(filename, "r")
     if not f then
-        print("Error: Unable to open Honeyport log file: " .. filename)
+        print("Error: Unable to open honeypot log file: " .. filename)
         return logs
     end
 
@@ -68,19 +59,19 @@ function fetch_honeyport_logs(filename)
     return logs
 end
 
--- Function to update honeyport_logs table in MySQL database
-function update_honeyport_logs(logs)
+-- Function to update honeypot_logs table in MySQL database
+function update_honeypot_logs(logs)
     if not conn then
         print("Error: Database connection is closed!")
         return
     end
 
     -- Optionally clear the table before inserting new records
-    conn:execute("DELETE FROM honeyport_logs")
+    conn:execute("DELETE FROM honeypot_logs")
     
     for _, log in ipairs(logs) do
         local query = string.format(
-            "INSERT INTO honeyport_logs (timestamp_col, host, process, pid, event, username, ip_address, port, status) VALUES ('%s', '%s', '%s', %d, '%s', '%s', '%s', %d, '%s')",
+            "INSERT INTO honeypot_logs (timestamp_col, host, process, pid, event, username, ip_address, port, status) VALUES ('%s', '%s', '%s', %d, '%s', '%s', '%s', %d, '%s')",
             log[1], log[2], log[3], log[4], log[5], log[6], log[7], log[8], log[9]
         )
         local res, err = conn:execute(query)
@@ -90,19 +81,40 @@ function update_honeyport_logs(logs)
     end
 end
 
--- Main processing:
--- Define the Honeyport log file path (adjust as needed)
-local honeyport_log_file = "/home/cowrie/cowrie/var/log/cowrie/"
+-- Function to export MySQL data to a CSV file using CSV Kit
+function export_logs_to_csv(output_csv)
+    -- MySQL query to export logs
+    local csv_query = string.format(
+        "SELECT * FROM honeypot_logs INTO OUTFILE '%s' FIELDS TERMINATED BY ',' ENCLOSED BY '\"' LINES TERMINATED BY '\n'",
+        output_csv
+    )
+    
+    local res, err = conn:execute(csv_query)
 
--- Fetch logs from the Honeyport log file
-local honeyport_logs = fetch_honeyport_logs(honeyport_log_file)
+    if not res then
+        print("Error exporting logs to CSV:", err)
+    else
+        print("✅ Logs successfully exported to CSV:", output_csv)
+    end
+end
+
+-- Main processing:
+-- Define log file path & output CSV file
+local honeypot_log_file = "/home/cowrie/cowrie/var/log/cowrie/cowrie.json"
+local output_csv = "/home/user/honeypot/honeypot_logs.csv"  -- Adjust path
+
+-- Fetch logs from the honeypot log file
+local honeypot_logs = fetch_honeypot_logs(honeypot_log_file)
 
 -- Update the MySQL table with the fetched logs
-update_honeyport_logs(honeyport_logs)
+update_honeypot_logs(honeypot_logs)
+
+-- Export logs to CSV using CSV Kit
+export_logs_to_csv(output_csv)
 
 -- Print the logs that were fetched and processed
-print("\n📜 Honeyport Logs:")
-for _, log in ipairs(honeyport_logs) do
+print("\n📜 honeypot Logs:")
+for _, log in ipairs(honeypot_logs) do
     print("{" .. table.concat(log, ", ") .. "}")
 end
 
