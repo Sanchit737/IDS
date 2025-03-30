@@ -70,7 +70,6 @@
 -- -- Start monitoring logs
 -- monitor_honeypot_logs(honeypot_log_file, output_csv, log_output_file)
 
--- Import JSON module
 local json = require("dkjson")
 
 -- File paths
@@ -78,45 +77,21 @@ local honeypot_log_file = "/home/cowrie/cowrie/var/log/cowrie/cowrie.json"
 local output_csv = "/home/user/honeypot/honeypot_logs.csv"
 local log_output_file = "/home/user/honeypot/processed_logs.log"
 
--- Function to read and process new log entries
-function process_new_logs()
+-- Function to fetch new logs from honeypot JSON file in real-time
+function monitor_honeypot_logs()
     local f = io.open(honeypot_log_file, "r")
     if not f then
         print("Error: Unable to open honeypot log file: " .. honeypot_log_file)
         return
     end
 
-    -- Move to the end of the file initially to only read new entries
+    -- Seek to the end of the file to only process new logs
     f:seek("end")
 
-    -- Open CSV file in append mode
-    local csv_f = io.open(output_csv, "a")
-    if not csv_f then
-        print("Error: Unable to open CSV file: " .. output_csv)
-        return
-    end
-
-    -- Write header if the file is empty
-    local csv_size = csv_f:seek("end")
-    if csv_size == 0 then
-        csv_f:write("timestamp,src_ip,eventid,username,sensor,dest_port,password\n")
-    end
-    csv_f:close()
-
-    -- Open log output file in append mode
-    local log_f = io.open(log_output_file, "a")
-    if not log_f then
-        print("Error: Unable to open log file: " .. log_output_file)
-        return
-    end
-    log_f:close()
-
-    print("🔄 Monitoring logs in real-time... Press CTRL+C to stop.")
-
     while true do
-        local new_line = f:read("*l") -- Read new line
-        if new_line then
-            local log_entry, _, err = json.decode(new_line)
+        local line = f:read("*l")  -- Read new line
+        if line then
+            local log_entry, _, err = json.decode(line)
             if log_entry then
                 local log_data = {
                     log_entry.timestamp or "",
@@ -128,38 +103,58 @@ function process_new_logs()
                     log_entry.password or ""
                 }
 
-                -- Append new log entry to CSV
-                csv_f = io.open(output_csv, "a")
-                csv_f:write(table.concat(log_data, ",") .. "\n")
-                csv_f:close()
-
-                -- Append new log entry to log file
-                log_f = io.open(log_output_file, "a")
-                log_f:write("{" .. table.concat(log_data, ", ") .. "}\n")
-                log_f:close()
-
-                -- Print the new log entry
-                print("📢 New Log Entry:", table.concat(log_data, ", "))
-
-                -- Print updated CSV file contents
-                print("\n📄 Updated CSV File Content:")
-                local csv_f_read = io.open(output_csv, "r")
-                for line in csv_f_read:lines() do
-                    print(line)
+                -- Append to CSV
+                local csv_f = io.open(output_csv, "a")
+                if csv_f then
+                    csv_f:write(table.concat(log_data, ",") .. "\n")
+                    csv_f:close()
                 end
-                csv_f_read:close()
+
+                -- Append to log file
+                local log_f = io.open(log_output_file, "a")
+                if log_f then
+                    log_f:write("{" .. table.concat(log_data, ", ") .. "}\n")
+                    log_f:close()
+                end
+
+                print("🟢 New Log Processed: {" .. table.concat(log_data, ", ") .. "}")
             else
-                print("Warning: Skipping unparseable line:", err or "Unknown error")
+                print("Warning: Skipping unparseable line: " .. (err or "Unknown error"))
             end
         else
-            -- No new logs, wait for new entries
-            os.execute("sleep 1")
+            os.execute("sleep 1")  -- Wait for new entries
         end
     end
-
-    f:close()
 end
 
--- Start real-time log processing
-process_new_logs()
+-- Function to monitor changes in CSV file and print updates
+function monitor_csv_file()
+    local last_size = 0
+
+    while true do
+        local f = io.open(output_csv, "r")
+        if f then
+            f:seek("end")  -- Move to the end of the file
+            local size = f:seek()  -- Get current file size
+
+            if size > last_size then
+                f:seek("set", last_size)  -- Read only new changes
+                for line in f:lines() do
+                    print("🔵 CSV Updated: " .. line)
+                end
+                last_size = size
+            end
+            f:close()
+        end
+        os.execute("sleep 1")  -- Wait before checking again
+    end
+end
+
+-- Run both functions in parallel
+local pid = os.fork()
+if pid == 0 then
+    monitor_csv_file()  -- Child process watches CSV
+else
+    monitor_honeypot_logs()  -- Parent process watches JSON logs
+end
 
