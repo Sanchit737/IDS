@@ -3,7 +3,14 @@ local luasql = require("luasql.mysql")
 local env = assert(luasql.mysql(), "Error: Failed to initialize LuaSQL MySQL")
 
 -- Connect to MySQL database
-local conn = assert(env:connect('Detectors', 'root', 'Sanchit@2004', 'localhost', 3306),
+local db_host = os.getenv("DB_HOST")
+local db_user = os.getenv("DB_user")
+local db_pass = os.getenv("DB_PASS")
+local db_name = os.getenv("DB_NAME")
+local db_port = os.getenv("DB_PORT")
+
+-- Connect to MySQL database
+local conn = assert(env:connect(db_name, db_user, db_pass, db_host, db_port),
                     "Error: Failed to connect to MySQL database")
 
 -- Ensure the database tables exist
