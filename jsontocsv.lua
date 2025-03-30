@@ -288,8 +288,8 @@ local function process_log_line(line)
             print("🚨 Alert: Multiple failed login attempts detected from " .. src_ip .. " on port " .. dst_port)
 
             -- Insert into the database if not already present
-            local query = string.format("INSERT INTO self_set (source_ip, destination_port, attempts) VALUES ('%s', %d, %d)", 
-                                        src_ip, tonumber(dst_port) or 0, login_attempts[key].count)
+            local query = string.format("INSERT INTO self_set (source_ip, destination_port) VALUES ('%s', %d)", 
+                                        src_ip, tonumber(dst_port) or 0)
             local res, err = conn:execute(query)
             if not res then
                 print("Error inserting blocked attempt:", err)
