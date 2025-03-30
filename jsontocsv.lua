@@ -87,7 +87,7 @@ local function process_log_line(line)
             log_entry.eventid or "",
             log_entry.username or "",
             log_entry.sensor or "",
-            log_entry.dest_port or "",
+            log_entry.dst_port or "",
             log_entry.password or ""
         }
         -- Append to CSV file
