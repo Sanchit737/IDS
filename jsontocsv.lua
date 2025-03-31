@@ -335,9 +335,7 @@ local function update_database(src_ip, dst_port)
     local query = string.format([[
         INSERT INTO self_set 
         (source_ip, destination_port)
-        VALUES ('%s', %d)
-        ON DUPLICATE KEY UPDATE
-            last_seen = NOW()]],
+        VALUES ('%s', %d)]],
         sanitized_ip, port)
 
     local success, err = pcall(conn.execute, conn, query)
