@@ -351,7 +351,7 @@ end
 -------------------------
 -- Core Functionality --
 -------------------------
-local login_attempts = {}
+local event_attempts = {}
 
 local function process_log_line(line)
     local log_entry, pos, err = json.decode(line)
@@ -399,51 +399,51 @@ local function process_log_line(line)
         log_f:close()
     end
 
-    -- Track login attempts
-    local key = fields.src_ip .. ":" .. tostring(fields.dst_port)
-    local current_time = fields.timestamp
+      -- Track event attempts based on src_ip, dst_port, and eventid
+      local key = fields.src_ip .. ":" .. tostring(fields.dst_port) .. ":" .. fields.eventid
+      local current_time = fields.timestamp
+  
+      if not event_attempts[key] then
+          event_attempts[key] = {
+              count = 1,
+              first_attempt = current_time,
+              blocked = false
+          }
+      else
+          local attempt = event_attempts[key]
+          if (current_time - attempt.first_attempt) <= config.security.time_window then
+              attempt.count = attempt.count + 1
+          else
+              -- Reset counter if outside time window
+              event_attempts[key] = {
+                  count = 1,
+                  first_attempt = current_time,
+                  blocked = false
+              }
+          end
+      end
 
-    if not login_attempts[key] then
-        login_attempts[key] = {
-            count = 1,
-            first_attempt = current_time,
-            blocked = false
-        }
-    else
-        local attempt = login_attempts[key]
-        if (current_time - attempt.first_attempt) <= config.security.time_window then
-            attempt.count = attempt.count + 1
-        else
-            -- Reset counter if outside time window
-            login_attempts[key] = {
-                count = 1,
-                first_attempt = current_time,
-                blocked = false
-            }
-        end
-    end
-
+    
     -- Check attack threshold
-    local attempt_data = login_attempts[key]
+    local attempt_data = event_attempts[key]
     if not attempt_data.blocked and 
        attempt_data.count >= config.security.attack_threshold then
         
         log_message("alert", string.format(
-            "Attack detected: %s:%d (%d attempts)",
-            fields.src_ip, fields.dst_port, attempt_data.count
+            "Attack detected: %s:%d (%s) - %d attempts",
+            fields.src_ip, fields.dst_port, fields.eventid, attempt_data.count
         ))
 
-        -- Block IP and update database
-        if block_ip(fields.src_ip) and update_database(fields.src_ip, fields.dst_port) then
-            attempt_data.blocked = true
-            log_message("security", string.format(
-                "Successfully blocked %s:%d",
-                fields.src_ip, fields.dst_port
-            ))
+              -- Block IP and update database
+              if block_ip(fields.src_ip) and update_database(fields.src_ip, fields.dst_port) then
+                attempt_data.blocked = true
+                log_message("security", string.format(
+                    "Successfully blocked %s for repeated %s events on port %d",
+                    fields.src_ip, fields.eventid, fields.dst_port
+                ))
+            end
         end
     end
-end
-
 ---------------------
 -- File Monitoring --
 ---------------------
