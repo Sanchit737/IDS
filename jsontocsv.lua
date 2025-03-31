@@ -433,7 +433,7 @@ local function process_log_line(line)
         ))
 
               -- Block IP and update database
-              if block_ip(fields.src_ip) and update_database(fields.src_ip, fields.dst_port) then
+              if block_ip(fields.src_ip) and update_database(fields.src_ip, fields.dst_port, fields.eventid) then
                 attempt_data.blocked = true
                 log_message("security", string.format(
                     "Successfully blocked %s for repeated %s events on port %d",
