@@ -328,14 +328,14 @@ local function block_ip(src_ip)
     end
 end
 
-local function update_database(src_ip, dst_port)
+local function update_database(src_ip, dst_port, event_id)
     local sanitized_ip = sanitize_input(src_ip)
     local port = tonumber(dst_port) or 0
 
     local query = string.format([[
         INSERT INTO self_set 
-        (source_ip, destination_port)
-        VALUES ('%s', %d)]],
+        (source_ip, destination_port, event_id)
+        VALUES ('%s', %d, '%s')]],
         sanitized_ip, port)
 
     local success, err = pcall(conn.execute, conn, query)
