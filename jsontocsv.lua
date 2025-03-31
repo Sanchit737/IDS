@@ -214,7 +214,7 @@ local luasql = require("luasql.mysql")
 -------------------
 local config = {
     db = {
-        host = os.getenv("DB_HOST"),
+        host = 'localhost',
         user = os.getenv("DB_user"),
         pass = os.getenv("DB_PASS"),
         name = os.getenv("DB_NAME"),
