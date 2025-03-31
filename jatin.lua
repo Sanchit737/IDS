@@ -112,12 +112,6 @@ function adaptive_ids:detect_threats(line)
     end
 end
 
--- Initialize and start monitoring
-function adaptive_ids:start()
-    self:init_db()
-    self:monitor_logs()
-end
-
 -- Initialize log monitoring with database support
 function adaptive_ids:monitor_logs()
     -- Initialize database connection
@@ -290,6 +284,12 @@ function adaptive_ids:init_db()
         end
         cursor:close()
     end
+end
+
+-- Initialize and start monitoring
+function adaptive_ids:start()
+    self:init_db()
+    self:monitor_logs()
 end
 
 -- Example usage:
