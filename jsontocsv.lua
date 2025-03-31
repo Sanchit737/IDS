@@ -336,7 +336,7 @@ local function update_database(src_ip, dst_port, event_id)
         INSERT INTO self_set 
         (source_ip, destination_port, event_id)
         VALUES ('%s', %d, '%s')]],
-        sanitized_ip, port)
+        sanitized_ip, port, event_id)
 
     local success, err = pcall(conn.execute, conn, query)
     if not success then
