@@ -11,10 +11,10 @@ local adaptive_ids = {
     threshold = 5,
     -- Database configuration
     db_config = {
-        host = "localhost",
-        user = "root",
-        password = "yourpassword",
-        database = "ids_db"
+        host = 'localhost',
+        user = os.getenv("DB_user"),
+        password = os.getenv("DB_PASS"),
+        database = os.getenv("DB_NAME"),
     },
     conn = nil  -- Will hold database connection
 }
